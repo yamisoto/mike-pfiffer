@@ -1,0 +1,408 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+      "sql_server_name": {
+          "defaultValue": "SQL",
+          "type": "String"
+      },
+      "web_server_name": {
+          "defaultValue": "WEB",
+          "type": "String"
+      },
+      "admin_username": {
+          "defaultValue": "sysadmin",
+          "type": "String"
+      },
+      "admin_password": {
+          "defaultValue": "P@ssw0rd2020",
+          "type": "secureString"
+      }    
+  },
+  "variables": {},
+  "resources": [
+      {
+          "type": "Microsoft.Network/networkSecurityGroups",
+          "apiVersion": "2020-11-01",
+          "name": "SQL-NSG",
+          "location": "australiaeast",
+          "properties": {
+              "securityRules": [
+                  {
+                      "name": "SSH",
+                      "properties": {
+                          "protocol": "TCP",
+                          "sourcePortRange": "*",
+                          "destinationPortRange": "22",
+                          "sourceAddressPrefix": "*",
+                          "destinationAddressPrefix": "*",
+                          "access": "Allow",
+                          "priority": 300,
+                          "direction": "Inbound",
+                          "sourcePortRanges": [],
+                          "destinationPortRanges": [],
+                          "sourceAddressPrefixes": [],
+                          "destinationAddressPrefixes": []
+                      }
+                  }
+              ]
+          }
+      },
+      {
+          "type": "Microsoft.Network/networkSecurityGroups",
+          "apiVersion": "2020-11-01",
+          "name": "WEB-NSG",
+          "location": "australiaeast",
+          "properties": {
+              "securityRules": [
+                  {
+                      "name": "SSH",
+                      "properties": {
+                          "protocol": "TCP",
+                          "sourcePortRange": "*",
+                          "destinationPortRange": "22",
+                          "sourceAddressPrefix": "*",
+                          "destinationAddressPrefix": "*",
+                          "access": "Allow",
+                          "priority": 300,
+                          "direction": "Inbound",
+                          "sourcePortRanges": [],
+                          "destinationPortRanges": [],
+                          "sourceAddressPrefixes": [],
+                          "destinationAddressPrefixes": []
+                      }
+                  }
+              ]
+          }
+      },
+      {
+          "type": "Microsoft.Network/publicIPAddresses",
+          "apiVersion": "2020-11-01",
+          "name": "SQL-IP",
+          "location": "australiaeast",
+          "sku": {
+              "name": "Basic",
+              "tier": "Regional"
+          },
+          "properties": {
+              "publicIPAddressVersion": "IPv4",
+              "publicIPAllocationMethod": "Dynamic",
+              "idleTimeoutInMinutes": 4,
+              "ipTags": []
+          }
+      },
+      {
+          "type": "Microsoft.Network/publicIPAddresses",
+          "apiVersion": "2020-11-01",
+          "name": "WEB-IP",
+          "location": "australiaeast",
+          "sku": {
+              "name": "Basic",
+              "tier": "Regional"
+          },
+          "properties": {
+              "publicIPAddressVersion": "IPv4",
+              "publicIPAllocationMethod": "Dynamic",
+              "idleTimeoutInMinutes": 4,
+              "ipTags": []
+          }
+      },
+      {
+          "type": "Microsoft.Network/virtualNetworks",
+          "apiVersion": "2020-11-01",
+          "name": "wp-vnet",
+          "location": "australiaeast",
+          "properties": {
+              "addressSpace": {
+                  "addressPrefixes": [
+                      "192.168.0.0/16"
+                  ]
+              },
+              "subnets": [
+                  {
+                      "name": "WEB",
+                      "properties": {
+                          "addressPrefix": "192.168.1.0/24",
+                          "delegations": [],
+                          "privateEndpointNetworkPolicies": "Enabled",
+                          "privateLinkServiceNetworkPolicies": "Enabled"
+                      }
+                  },
+                  {
+                      "name": "SQL",
+                      "properties": {
+                          "addressPrefix": "192.168.2.0/24",
+                          "delegations": [],
+                          "privateEndpointNetworkPolicies": "Enabled",
+                          "privateLinkServiceNetworkPolicies": "Enabled"
+                      }
+                  }
+              ],
+              "virtualNetworkPeerings": [],
+              "enableDdosProtection": false
+          }
+      },
+      {
+          "type": "Microsoft.Compute/virtualMachines",
+          "apiVersion": "2021-11-01",
+          "name": "[parameters('sql_server_name')]",
+          "location": "australiaeast",
+          "dependsOn": [
+              "[resourceId('Microsoft.Network/networkInterfaces', 'SQL-NIC')]"
+          ],
+          "properties": {
+              "hardwareProfile": {
+                  "vmSize": "Standard_DS1_v2"
+              },
+              "storageProfile": {
+                  "imageReference": {
+                      "publisher": "Canonical",
+                      "offer": "UbuntuServer",
+                      "sku": "18_04-lts-gen2",
+                      "version": "latest"
+                  },
+                  "osDisk": {
+                      "osType": "Linux",
+                      "name": "SQL-OS-DISK",
+                      "createOption": "FromImage",
+                      "caching": "ReadWrite",
+                      "managedDisk": {
+                          "storageAccountType": "Premium_LRS"
+                      },
+                      "deleteOption": "Delete",
+                      "diskSizeGB": 30
+                  },
+                  "dataDisks": []
+              },
+              "osProfile": {
+                  "computerName": "[parameters('sql_server_name')]",
+                  "adminUsername": "[parameters('admin_username')]",
+                  "adminPassword": "[parameters('admin_password')]",
+                  "linuxConfiguration": {
+                      "disablePasswordAuthentication": false
+                  }
+              },
+              "networkProfile": {
+                  "networkInterfaces": [
+                      {
+                          "id": "[resourceId('Microsoft.Network/networkInterfaces', 'SQL-NIC')]",
+                          "properties": {
+                              "deleteOption": "Delete"
+                          }
+                      }
+                  ]
+              },
+              "diagnosticsProfile": {
+                  "bootDiagnostics": {
+                      "enabled": true
+                  }
+              }
+          }
+      },
+      {
+          "type": "Microsoft.Compute/virtualMachines",
+          "apiVersion": "2021-11-01",
+          "name": "[parameters('web_server_name')]",
+          "location": "australiaeast",
+          "dependsOn": [
+              "[resourceId('Microsoft.Network/networkInterfaces', 'WEB-NIC')]"
+          ],
+          "properties": {
+              "hardwareProfile": {
+                  "vmSize": "Standard_DS1_v2"
+              },
+              "storageProfile": {
+                  "imageReference": {
+                      "publisher": "Canonical",
+                      "offer": "UbuntuServer",
+                      "sku": "18_04-lts-gen2",
+                      "version": "latest"
+                  },
+                  "osDisk": {
+                      "osType": "Linux",
+                      "name": "WEB-OS-DISK",
+                      "createOption": "FromImage",
+                      "caching": "ReadWrite",
+                      "managedDisk": {
+                          "storageAccountType": "Premium_LRS"
+                      },
+                      "deleteOption": "Delete",
+                      "diskSizeGB": 30
+                  },
+                  "dataDisks": []
+              },
+              "osProfile": {
+                  "computerName": "[parameters('web_server_name')]",
+                  "adminUsername": "[parameters('admin_username')]",
+                  "adminPassword": "[parameters('admin_password')]",
+                  "linuxConfiguration": {
+                      "disablePasswordAuthentication": false
+                  }
+              },
+              "networkProfile": {
+                  "networkInterfaces": [
+                      {
+                          "id": "[resourceId('Microsoft.Network/networkInterfaces', 'WEB-NIC')]",
+                          "properties": {
+                              "deleteOption": "Delete"
+                          }
+                      }
+                  ]
+              },
+              "diagnosticsProfile": {
+                  "bootDiagnostics": {
+                      "enabled": true
+                  }
+              }
+          }
+      },
+      {
+          "type": "Microsoft.Network/networkSecurityGroups/securityRules",
+          "apiVersion": "2020-11-01",
+          "name": "[concat('SQL-NSG', '/SSH')]",
+          "dependsOn": [
+              "[resourceId('Microsoft.Network/networkSecurityGroups', 'SQL-NSG')]"
+          ],
+          "properties": {
+              "protocol": "TCP",
+              "sourcePortRange": "*",
+              "destinationPortRange": "22",
+              "sourceAddressPrefix": "*",
+              "destinationAddressPrefix": "*",
+              "access": "Allow",
+              "priority": 300,
+              "direction": "Inbound",
+              "sourcePortRanges": [],
+              "destinationPortRanges": [],
+              "sourceAddressPrefixes": [],
+              "destinationAddressPrefixes": []
+          }
+      },
+      {
+          "type": "Microsoft.Network/networkSecurityGroups/securityRules",
+          "apiVersion": "2020-11-01",
+          "name": "[concat('WEB-NSG', '/SSH')]",
+          "dependsOn": [
+              "[resourceId('Microsoft.Network/networkSecurityGroups', 'WEB-NSG')]"
+          ],
+          "properties": {
+              "protocol": "TCP",
+              "sourcePortRange": "*",
+              "destinationPortRange": "22",
+              "sourceAddressPrefix": "*",
+              "destinationAddressPrefix": "*",
+              "access": "Allow",
+              "priority": 300,
+              "direction": "Inbound",
+              "sourcePortRanges": [],
+              "destinationPortRanges": [],
+              "sourceAddressPrefixes": [],
+              "destinationAddressPrefixes": []
+          }
+      },
+      {
+          "type": "Microsoft.Network/virtualNetworks/subnets",
+          "apiVersion": "2020-11-01",
+          "name": "[concat('wp-vnet', '/SQL')]",
+          "dependsOn": [
+              "[resourceId('Microsoft.Network/virtualNetworks', 'wp-vnet')]"
+          ],
+          "properties": {
+              "addressPrefix": "192.168.2.0/24",
+              "delegations": [],
+              "privateEndpointNetworkPolicies": "Enabled",
+              "privateLinkServiceNetworkPolicies": "Enabled"
+          }
+      },
+      {
+          "type": "Microsoft.Network/virtualNetworks/subnets",
+          "apiVersion": "2020-11-01",
+          "name": "[concat('wp-vnet', '/WEB')]",
+          "dependsOn": [
+              "[resourceId('Microsoft.Network/virtualNetworks', 'wp-vnet')]"
+          ],
+          "properties": {
+              "addressPrefix": "192.168.1.0/24",
+              "delegations": [],
+              "privateEndpointNetworkPolicies": "Enabled",
+              "privateLinkServiceNetworkPolicies": "Enabled"
+          }
+      },
+      {
+          "type": "Microsoft.Network/networkInterfaces",
+          "apiVersion": "2020-11-01",
+          "name": "SQL-NIC",
+          "location": "australiaeast",
+          "dependsOn": [
+              "[resourceId('Microsoft.Network/publicIPAddresses', 'SQL-IP')]",
+              "[resourceId('Microsoft.Network/virtualNetworks/subnets', 'wp-vnet', 'SQL')]",
+              "[resourceId('Microsoft.Network/networkSecurityGroups', 'SQL-NSG')]"
+          ],
+          "properties": {
+              "ipConfigurations": [
+                  {
+                      "name": "ipconfig1",
+                      "properties": {
+                          "privateIPAddress": "192.168.2.4",
+                          "privateIPAllocationMethod": "Dynamic",
+                          "publicIPAddress": {
+                              "id": "[resourceId('Microsoft.Network/publicIPAddresses', 'SQL-IP')]"
+                          },
+                          "subnet": {
+                              "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', 'wp-vnet', 'SQL')]"
+                          },
+                          "primary": true,
+                          "privateIPAddressVersion": "IPv4"
+                      }
+                  }
+              ],
+              "dnsSettings": {
+                  "dnsServers": []
+              },
+              "enableAcceleratedNetworking": true,
+              "enableIPForwarding": false,
+              "networkSecurityGroup": {
+                  "id": "[resourceId('Microsoft.Network/networkSecurityGroups', 'SQL-NSG')]"
+              }
+          }
+      },
+      {
+          "type": "Microsoft.Network/networkInterfaces",
+          "apiVersion": "2020-11-01",
+          "name": "WEB-NIC",
+          "location": "australiaeast",
+          "dependsOn": [
+              "[resourceId('Microsoft.Network/publicIPAddresses', 'WEB-IP')]",
+              "[resourceId('Microsoft.Network/virtualNetworks/subnets', 'wp-vnet', 'WEB')]",
+              "[resourceId('Microsoft.Network/networkSecurityGroups', 'WEB-NSG')]"
+          ],
+          "properties": {
+              "ipConfigurations": [
+                  {
+                      "name": "ipconfig1",
+                      "properties": {
+                          "privateIPAddress": "192.168.1.4",
+                          "privateIPAllocationMethod": "Dynamic",
+                          "publicIPAddress": {
+                              "id": "[resourceId('Microsoft.Network/publicIPAddresses', 'WEB-IP')]"
+                          },
+                          "subnet": {
+                              "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', 'wp-vnet', 'WEB')]"
+                          },
+                          "primary": true,
+                          "privateIPAddressVersion": "IPv4"
+                      }
+                  }
+              ],
+              "dnsSettings": {
+                  "dnsServers": []
+              },
+              "enableAcceleratedNetworking": true,
+              "enableIPForwarding": false,
+              "networkSecurityGroup": {
+                  "id": "[resourceId('Microsoft.Network/networkSecurityGroups', 'WEB-NSG')]"
+              }
+          }
+      }
+  ]
+}
